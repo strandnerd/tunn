@@ -1,0 +1,40 @@
+# Example tunn configuration file
+# Copy this file to ~/.tunnrc and modify according to your needs
+
+tunnels:
+  # API server tunnel
+  api:
+    # Host alias from ~/.ssh/config
+    host: myserver
+    # Port mappings (local:remote)
+    ports:
+      - 3000:3000      # API server
+      - 4000:4001      # WebSocket server
+    # Optional: SSH user (overrides ~/.ssh/config)
+    user: apiuser
+    # Optional: specific identity file
+    identity_file: ~/.ssh/id_rsa
+
+  # Database tunnel
+  db:
+    host: database
+    ports:
+      - 3306:3306      # MySQL
+      - 5432:5432      # PostgreSQL
+    # Only specify user, rely on SSH config for key
+    user: dbadmin
+
+  # Redis cache tunnel
+  cache:
+    host: cacheserver
+    ports:
+      - 6379:6379      # Redis
+
+  # Development services
+  dev:
+    host: devbox
+    ports:
+      - 8080:8080      # HTTP server
+      - 8443:8443      # HTTPS server
+      - 9090:9090      # Metrics
+      - 3000:3000      # Node.js app
