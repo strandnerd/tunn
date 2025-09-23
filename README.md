@@ -9,6 +9,7 @@
 - 🔌 **Multiple Ports**: Support for multiple port mappings per tunnel
 - 🔐 **SSH Integration**: Leverages your existing SSH configuration
 - ⚡ **Parallel Execution**: All tunnels run concurrently
+- 🧩 **Daemon Mode**: Background service with status reporting via IPC
 
 ## Installation
 
@@ -83,6 +84,33 @@ tunn api db
 tunn db cache
 ```
 
+### Run Tunnels in the Background
+
+```bash
+tunn --detach
+
+# Or only specific tunnels
+tunn --detach api db
+```
+
+The CLI respawns itself as a daemon, stores metadata under `$XDG_RUNTIME_DIR/tunn` (or `~/.cache/tunn` when the runtime dir is unavailable), and immediately returns control to the terminal.
+
+### Check Daemon Status
+
+```bash
+tunn status
+```
+
+The status command contacts the daemon's Unix socket, reporting the PID, mode, and the latest port states for each managed tunnel. If no daemon is running, a friendly message is printed instead.
+
+### Stop the Daemon
+
+```bash
+tunn stop
+```
+
+The stop command asks the daemon to shut down cleanly, waits for it to exit, and reports success.
+
 ### Output Example
 
 ```
@@ -117,3 +145,13 @@ Host database
 - Go 1.21 or higher (for building)
 - OpenSSH client (`ssh` command)
 - Valid SSH configuration
+
+## Daemon Runtime Files
+
+While running in detached mode, `tunn` stores the following files in its runtime directory:
+
+- `daemon.pid` – PID of the active daemon; used to prevent duplicate launches.
+- `daemon.sock` – Unix domain socket for control commands (e.g., `tunn status`).
+- `daemon.log` – Aggregated stdout/stderr from the daemon process.
+
+The directory is created with `0700` permissions, and files are cleaned up automatically when the daemon exits or when stale state is detected on the next launch.
