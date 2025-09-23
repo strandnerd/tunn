@@ -10,10 +10,26 @@ import (
 	"github.com/strandnerd/tunn/output"
 )
 
+type stubPortChecker struct {
+	listeners map[string]*processInfo
+	err       error
+}
+
+func (s *stubPortChecker) findListener(port string) (*processInfo, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.listeners == nil {
+		return nil, nil
+	}
+	return s.listeners[port], nil
+}
+
 func TestManagerRunTunnels(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
 	manager := NewManager(mock, display)
+	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
 		"api": {
@@ -56,6 +72,7 @@ func TestManagerRunSingleTunnel(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
 	manager := NewManager(mock, display)
+	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
 		"api": {
@@ -72,8 +89,8 @@ func TestManagerRunSingleTunnel(t *testing.T) {
 		t.Errorf("Expected context deadline exceeded, got %v", err)
 	}
 
-	if len(mock.Commands) != 1 {
-		t.Errorf("Expected 1 command, got %d", len(mock.Commands))
+	if len(mock.Commands) != 2 {
+		t.Errorf("Expected 2 commands (one per port), got %d", len(mock.Commands))
 	}
 }
 
@@ -81,6 +98,7 @@ func TestManagerCancellation(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
 	manager := NewManager(mock, display)
+	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
 		"api": {
@@ -99,5 +117,38 @@ func TestManagerCancellation(t *testing.T) {
 	err := manager.RunTunnels(ctx, tunnels)
 	if err != context.Canceled {
 		t.Errorf("Expected context canceled, got %v", err)
+	}
+}
+
+func TestManagerRunTunnelPortInUse(t *testing.T) {
+	mock := &executor.MockSSHExecutor{}
+	display := output.NewDisplay()
+	manager := NewManager(mock, display)
+	manager.checker = &stubPortChecker{
+		listeners: map[string]*processInfo{
+			"3000": {
+				command: "node",
+				pid:     3342,
+			},
+		},
+	}
+
+	tunnelCfg := config.Tunnel{
+		Host:  "server1",
+		Ports: []string{"3000:3000"},
+	}
+
+	err := manager.runTunnel(context.Background(), "api", tunnelCfg)
+	if err == nil {
+		t.Fatal("expected error when port is in use, got nil")
+	}
+
+	expected := "port 3000 is being used by \"node\" (pid: 3342)"
+	if err.Error() != expected {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+
+	if len(mock.Commands) != 0 {
+		t.Fatalf("expected executor not to run, but got %d commands", len(mock.Commands))
 	}
 }
