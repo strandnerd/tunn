@@ -84,7 +84,14 @@ func (d *Display) printStatuses() {
 	fmt.Printf("%stunn is listening...%s\n", ColorGray, ColorReset)
 	fmt.Println()
 
-	for name, status := range d.statuses {
+	names := make([]string, 0, len(d.statuses))
+	for name := range d.statuses {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		status := d.statuses[name]
 		color := d.getColorLocked(name)
 		fmt.Printf("%s[%s]%s\n", color, name, ColorReset)
 
