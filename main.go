@@ -166,7 +166,7 @@ func launchDaemon(paths daemon.Paths, tunnelNames []string) error {
 
 	encounteredErrors, previewErr := monitorDaemonStartup(paths, daemonPreviewDuration, isTerminal(os.Stdout))
 	if previewErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: unable to preview daemon startup: %v\n", previewErr)
+		return previewErr
 	}
 
 	fmt.Printf("tunn daemon started (pid %d)\n", childPID)
@@ -199,7 +199,7 @@ func runForeground(tunnels map[string]config.Tunnel) error {
 		OnStatusChange: display.UpdateStatus,
 	}
 
-	manager := tunnel.NewManager(sshExec, display)
+	manager := tunnel.NewManager(sshExec, display, nil)
 
 	return manager.RunTunnels(ctx, tunnels)
 }
@@ -259,7 +259,7 @@ func runDaemonCommand(paths daemon.Paths, tunnelNames []string) error {
 		OnStatusChange: store.Update,
 	}
 
-	manager := tunnel.NewManager(sshExec, nil)
+	manager := tunnel.NewManager(sshExec, nil, store.Update)
 	managerErrCh := make(chan error, 1)
 	go func() {
 		managerErrCh <- manager.RunTunnels(ctx, selected)
@@ -423,6 +423,13 @@ func monitorDaemonStartup(paths daemon.Paths, duration time.Duration, render boo
 	for {
 		resp, err := queryDaemonStatus(paths)
 		if err != nil {
+			if message, failed := detectDaemonFailure(paths); failed {
+				return true, fmt.Errorf("daemon exited during startup: %s", message)
+			}
+			if isRetryableStatusError(err) && time.Now().Before(deadline) {
+				time.Sleep(interval)
+				continue
+			}
 			return false, err
 		}
 		if statusHasError(resp) {
@@ -446,24 +453,56 @@ func renderDaemonPreview(paths daemon.Paths, duration time.Duration) (bool, erro
 	encounteredError := false
 	var exitCh <-chan struct{}
 	var errorDeadline time.Time
+	var fatalErr error
+	var fatalMessage string
 
 	for {
 		resp, err := queryDaemonStatus(paths)
-		if err != nil {
-			return encounteredError, err
-		}
+		if err == nil {
+			fatalErr = nil
+			fatalMessage = ""
 
-		hasErr := applySnapshotToDisplay(display, resp, cache)
-		if hasErr {
-			if !encounteredError {
-				encounteredError = true
-				display.SetFooter("Errors detected while starting tunnels. Press Enter to exit preview.")
-				if isTerminal(os.Stdin) {
-					exitCh = waitForEnterAsync()
-					errorDeadline = time.Time{}
-				} else {
-					errorDeadline = time.Now().Add(duration)
+			hasErr := applySnapshotToDisplay(display, resp, cache)
+			if hasErr {
+				if !encounteredError {
+					encounteredError = true
+					display.SetFooter(fmt.Sprintf("%sErrors detected while starting tunnels. Press Enter to exit preview.%s", output.ColorRed, output.ColorReset))
+					if isTerminal(os.Stdin) {
+						exitCh = waitForEnterAsync()
+						errorDeadline = time.Time{}
+					} else {
+						errorDeadline = time.Now().Add(duration)
+					}
 				}
+			} else if !encounteredError {
+				display.SetFooter("Previewing daemon startup...")
+			}
+		} else {
+			if message, failed := detectDaemonFailure(paths); failed {
+				if fatalErr == nil {
+					fatalMessage = message
+					fatalErr = fmt.Errorf("daemon exited during startup: %s", message)
+				}
+				coloredFooter := fmt.Sprintf("%sDaemon exited during startup: %s. Press Enter to exit preview.%s", output.ColorRed, fatalMessage, output.ColorReset)
+				markCachedStatuses(display, cache, message)
+				if !encounteredError {
+					encounteredError = true
+					display.SetFooter(coloredFooter)
+					if isTerminal(os.Stdin) {
+						exitCh = waitForEnterAsync()
+						errorDeadline = time.Time{}
+					} else {
+						errorDeadline = time.Now().Add(duration)
+					}
+				} else {
+					display.SetFooter(coloredFooter)
+				}
+			} else if isRetryableStatusError(err) {
+				if !encounteredError {
+					display.SetFooter("Waiting for daemon status...")
+				}
+			} else {
+				return encounteredError, err
 			}
 		}
 
@@ -472,14 +511,14 @@ func renderDaemonPreview(paths daemon.Paths, duration time.Duration) (bool, erro
 				select {
 				case <-exitCh:
 					display.SetFooter("")
-					return true, nil
+					return true, fatalErr
 				case <-ticker.C:
 					continue
 				}
 			}
 			if !errorDeadline.IsZero() && time.Now().After(errorDeadline) {
 				display.SetFooter("")
-				return true, nil
+				return true, fatalErr
 			}
 			<-ticker.C
 			continue
@@ -533,6 +572,65 @@ func applySnapshotToDisplay(display *output.Display, resp *daemon.StatusResponse
 	return hasError
 }
 
+func markCachedStatuses(display *output.Display, cache map[string]string, message string) {
+	if display == nil {
+		return
+	}
+	ports := extractPortsFromMessage(message)
+	portSet := make(map[string]struct{}, len(ports))
+	for _, p := range ports {
+		portSet[p] = struct{}{}
+	}
+	noPortInfo := len(portSet) == 0
+	errorStatus := fmt.Sprintf("error - %s", message)
+	stoppedStatus := "stopped"
+	for key := range cache {
+		parts := strings.SplitN(key, "|", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		tunnelName := parts[0]
+		mapping := parts[1]
+		status := errorStatus
+		if !noPortInfo {
+			local := mapping
+			if idx := strings.Index(local, ":"); idx != -1 {
+				local = local[:idx]
+			}
+			if _, ok := portSet[local]; !ok {
+				status = stoppedStatus
+			}
+		}
+		if cache[key] == status {
+			continue
+		}
+		cache[key] = status
+		display.UpdateStatus(tunnelName, mapping, status)
+	}
+}
+
+func extractPortsFromMessage(message string) []string {
+	lower := strings.ToLower(message)
+	ports := make([]string, 0, 2)
+	searchIdx := 0
+	for {
+		pos := strings.Index(lower[searchIdx:], "port ")
+		if pos == -1 {
+			break
+		}
+		pos += searchIdx + len("port ")
+		end := pos
+		for end < len(message) && message[end] >= '0' && message[end] <= '9' {
+			end++
+		}
+		if end > pos {
+			ports = append(ports, message[pos:end])
+		}
+		searchIdx = end
+	}
+	return ports
+}
+
 func statusHasError(resp *daemon.StatusResponse) bool {
 	if resp == nil {
 		return false
@@ -545,6 +643,32 @@ func statusHasError(resp *daemon.StatusResponse) bool {
 		}
 	}
 	return false
+}
+
+func detectDaemonFailure(paths daemon.Paths) (string, bool) {
+	_, running, err := daemon.CheckRunning(paths)
+	if err != nil {
+		return fmt.Sprintf("failed to check daemon state: %v", err), true
+	}
+	if running {
+		return "", false
+	}
+
+	message, logErr := tailLogMessage(paths.LogFile)
+	if logErr != nil {
+		return fmt.Sprintf("daemon exited during startup (log unavailable: %v)", logErr), true
+	}
+	if strings.TrimSpace(message) == "" {
+		return "daemon exited during startup", true
+	}
+	return message, true
+}
+
+func isRetryableStatusError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED)
 }
 
 func waitForEnterAsync() <-chan struct{} {

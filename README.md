@@ -10,6 +10,9 @@
 - 🔐 **SSH Integration**: Leverages your existing SSH configuration
 - ⚡ **Parallel Execution**: All tunnels run concurrently
 - 🧩 **Daemon Mode**: Background service with status reporting via IPC
+- 🧼 **Lean Go Module**: Depends only on `gopkg.in/yaml.v3`, keeping builds clean and portable
+- 🔧 **Native SSH Sessions**: Spawns the system `ssh` binary for each mapping, so keys and config behave exactly like your shell
+- 🎚️ **Per-Port Processes**: Launches one PID per port to pave the way for fine-grained lifecycle controls
 
 ## Installation
 
@@ -145,6 +148,7 @@ Host database
 - Go 1.21 or higher (for building)
 - OpenSSH client (`ssh` command)
 - Valid SSH configuration
+- macOS and Linux are supported today; Windows support is planned but not available yet
 
 ## Daemon Runtime Files
 

@@ -28,7 +28,7 @@ func (s *stubPortChecker) findListener(port string) (*processInfo, error) {
 func TestManagerRunTunnels(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
@@ -71,7 +71,7 @@ func TestManagerRunTunnels(t *testing.T) {
 func TestManagerRunSingleTunnel(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
@@ -112,7 +112,7 @@ func TestManagerRunSingleTunnel(t *testing.T) {
 func TestManagerCancellation(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
@@ -138,7 +138,7 @@ func TestManagerCancellation(t *testing.T) {
 func TestManagerRunTunnelPortInUse(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{
 		listeners: map[string]*processInfo{
 			"3000": {
