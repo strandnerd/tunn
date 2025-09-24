@@ -1,3 +1,7 @@
+![GitHub License](https://img.shields.io/github/license/strandnerd/tunn) ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/strandnerd/tunn/ci.yml) ![GitHub Release](https://img.shields.io/github/v/release/strandnerd/tunn) ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/strandnerd/tunn)
+
+
+
 # tunn - SSH Tunnel Manager
 
 `tunn` is a developer-friendly wrapper around OpenSSH that makes it easy to manage multiple SSH tunnels defined in a simple configuration file
