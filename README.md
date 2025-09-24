@@ -22,7 +22,7 @@
 
 
 
-![Screencast from 2025-09-23 21-51-54 (online-video-cutter com)](https://github.com/user-attachments/assets/060db143-b885-4c17-9ef9-4075b80a9267)
+![Screencast from 2025-09-23 22-19-13 (online-video-cutter com)](https://github.com/user-attachments/assets/dbce86b1-c40c-47b9-a89c-6e188ad6e4ee)
 
 
 
