@@ -16,7 +16,13 @@
 
 ## Installation
 
-### From Source
+### Quick Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/strandnerd/tunn/main/scripts/install.sh | sudo sh
+```
+
+### From Go Install
 
 ```bash
 go install github.com/strandnerd/tunn@latest
