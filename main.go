@@ -22,6 +22,7 @@ import (
 	"github.com/strandnerd/tunn/output"
 	"github.com/strandnerd/tunn/status"
 	"github.com/strandnerd/tunn/tunnel"
+	"github.com/strandnerd/tunn/version"
 )
 
 const daemonPreviewDuration = 2 * time.Second
@@ -56,6 +57,9 @@ func run() error {
 			return runDaemonCommand(paths, opts.TunnelNames)
 		}
 		return runStartCommand(paths, opts)
+	case cli.CommandVersion:
+		fmt.Println(version.String())
+		return nil
 	default:
 		return fmt.Errorf("unknown command")
 	}

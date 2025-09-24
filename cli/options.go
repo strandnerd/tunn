@@ -12,6 +12,7 @@ const (
 	CommandStart Command = iota
 	CommandStatus
 	CommandStop
+	CommandVersion
 )
 
 // Options captures parsed CLI arguments.
@@ -23,10 +24,12 @@ type Options struct {
 }
 
 var (
-	errStatusWithDetach = errors.New("status command cannot be used with --detach")
-	errStatusWithArgs   = errors.New("status command does not accept tunnel names")
-	errStopWithDetach   = errors.New("stop command cannot be used with --detach")
-	errStopWithArgs     = errors.New("stop command does not accept tunnel names")
+	errStatusWithDetach  = errors.New("status command cannot be used with --detach")
+	errStatusWithArgs    = errors.New("status command does not accept tunnel names")
+	errStopWithDetach    = errors.New("stop command cannot be used with --detach")
+	errStopWithArgs      = errors.New("stop command does not accept tunnel names")
+	errVersionWithDetach = errors.New("version command cannot be used with --detach")
+	errVersionWithArgs   = errors.New("version command does not accept additional arguments")
 )
 
 // Parse inspects the provided arguments and produces structured options.
@@ -42,6 +45,9 @@ func Parse(args []string) (*Options, error) {
 			}
 			if opts.Command == CommandStop {
 				return nil, errStopWithDetach
+			}
+			if opts.Command == CommandVersion {
+				return nil, errVersionWithDetach
 			}
 			opts.Detach = true
 		case "--internal-daemon":
@@ -68,8 +74,19 @@ func Parse(args []string) (*Options, error) {
 				return nil, errStopWithArgs
 			}
 			opts.Command = CommandStop
+		case "version":
+			if opts.Command != CommandStart {
+				return nil, fmt.Errorf("duplicate command")
+			}
+			if opts.Detach {
+				return nil, errVersionWithDetach
+			}
+			if len(opts.TunnelNames) > 0 {
+				return nil, errVersionWithArgs
+			}
+			opts.Command = CommandVersion
 		case "-h", "--help":
-			return nil, fmt.Errorf("usage: tunn [--detach|-d] [tunnel ...]\n       tunn status")
+			return nil, fmt.Errorf("usage: tunn [--detach|-d] [tunnel ...]\n       tunn status\n       tunn version")
 		default:
 			if len(arg) > 0 && arg[0] == '-' {
 				return nil, fmt.Errorf("unknown flag: %s", arg)
@@ -79,6 +96,9 @@ func Parse(args []string) (*Options, error) {
 			}
 			if opts.Command == CommandStop {
 				return nil, errStopWithArgs
+			}
+			if opts.Command == CommandVersion {
+				return nil, errVersionWithArgs
 			}
 			opts.TunnelNames = append(opts.TunnelNames, arg)
 		}

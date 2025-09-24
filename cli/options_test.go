@@ -35,6 +35,11 @@ func TestParse(t *testing.T) {
 			want:  Options{Command: CommandStatus},
 		},
 		{
+			name:  "version",
+			input: []string{"version"},
+			want:  Options{Command: CommandVersion},
+		},
+		{
 			name:      "status with detach",
 			input:     []string{"status", "--detach"},
 			wantError: errStatusWithDetach.Error(),
@@ -63,6 +68,16 @@ func TestParse(t *testing.T) {
 			name:      "stop with args",
 			input:     []string{"stop", "db"},
 			wantError: errStopWithArgs.Error(),
+		},
+		{
+			name:      "version with detach",
+			input:     []string{"version", "--detach"},
+			wantError: errVersionWithDetach.Error(),
+		},
+		{
+			name:      "version with args",
+			input:     []string{"version", "extra"},
+			wantError: errVersionWithArgs.Error(),
 		},
 		{
 			name:      "unknown flag",
