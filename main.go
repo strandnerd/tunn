@@ -87,7 +87,14 @@ func runStartCommand(paths daemon.Paths, opts *cli.Options) error {
 		return launchDaemon(paths, opts.TunnelNames)
 	}
 
-	return runForeground(selected)
+	if err := runForeground(selected); err != nil {
+		if errors.Is(err, context.Canceled) {
+			fmt.Println("Exiting...")
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func launchDaemon(paths daemon.Paths, tunnelNames []string) error {
@@ -320,29 +327,44 @@ func runStatusCommand(paths daemon.Paths) error {
 	if !resp.Running {
 		state = "stopped"
 	}
-	fmt.Printf("Daemon: %s (pid %d, mode %s)\n", state, resp.PID, resp.Mode)
-	if len(resp.Tunnels) == 0 {
-		fmt.Println("No tunnels managed by daemon")
+
+	if !isTerminal(os.Stdout) {
+		fmt.Printf("Daemon: %s (pid %d, mode %s)\n", state, resp.PID, resp.Mode)
+		if len(resp.Tunnels) == 0 {
+			fmt.Println("No tunnels managed by daemon")
+			return nil
+		}
+
+		sort.Slice(resp.Tunnels, func(i, j int) bool {
+			return resp.Tunnels[i].Name < resp.Tunnels[j].Name
+		})
+
+		fmt.Println("Tunnels:")
+		for _, tun := range resp.Tunnels {
+			fmt.Printf("  %s\n", tun.Name)
+			ports := make([]string, 0, len(tun.Ports))
+			for port := range tun.Ports {
+				ports = append(ports, port)
+			}
+			sort.Strings(ports)
+			for _, port := range ports {
+				fmt.Printf("    %s - %s\n", port, tun.Ports[port])
+			}
+		}
 		return nil
 	}
 
-	sort.Slice(resp.Tunnels, func(i, j int) bool {
-		return resp.Tunnels[i].Name < resp.Tunnels[j].Name
-	})
-
-	fmt.Println("Tunnels:")
-	for _, tun := range resp.Tunnels {
-		fmt.Printf("  %s\n", tun.Name)
-		ports := make([]string, 0, len(tun.Ports))
-		for port := range tun.Ports {
-			ports = append(ports, port)
-		}
-		sort.Strings(ports)
-		for _, port := range ports {
-			fmt.Printf("    %s - %s\n", port, tun.Ports[port])
-		}
+	display := output.NewDisplay()
+	cache := make(map[string]string)
+	hasErrors := applySnapshotToDisplay(display, resp, cache)
+	summary := fmt.Sprintf("Daemon: %s (pid %d, mode %s)", state, resp.PID, resp.Mode)
+	if len(resp.Tunnels) == 0 {
+		summary += " — no tunnels managed"
 	}
-
+	if hasErrors {
+		summary += " — errors detected"
+	}
+	display.SetFooter(summary)
 	return nil
 }
 
