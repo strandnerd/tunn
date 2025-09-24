@@ -151,31 +151,28 @@ type MockSSHExecutor struct {
 }
 
 func (m *MockSSHExecutor) Execute(ctx context.Context, name string, tunnel config.Tunnel) error {
-	// Simulate separate SSH processes for each port
+	args := []string{"ssh", "-N"}
 	for _, portMapping := range tunnel.Ports {
-		args := []string{"ssh", "-N"}
-
 		ports := expandPort(portMapping, ":")
 		local, remote := ports[0], ports[1]
 		args = append(args, "-L", fmt.Sprintf("%s:localhost:%s", local, remote))
+	}
 
-		if tunnel.IdentityFile != "" {
-			args = append(args, "-i", os.ExpandEnv(tunnel.IdentityFile))
-		}
+	if tunnel.IdentityFile != "" {
+		args = append(args, "-i", os.ExpandEnv(tunnel.IdentityFile))
+	}
 
-		if tunnel.User != "" {
-			args = append(args, "-l", tunnel.User)
-		}
+	if tunnel.User != "" {
+		args = append(args, "-l", tunnel.User)
+	}
 
-		args = append(args, tunnel.Host)
-		m.Commands = append(m.Commands, args)
+	args = append(args, tunnel.Host)
+	m.Commands = append(m.Commands, args)
 
-		if m.OnStatusChange != nil {
+	if m.OnStatusChange != nil {
+		for _, portMapping := range tunnel.Ports {
 			m.OnStatusChange(name, portMapping, "connecting")
-			go func(port string) {
-				time.Sleep(100 * time.Millisecond)
-				m.OnStatusChange(name, port, "active")
-			}(portMapping)
+			m.OnStatusChange(name, portMapping, "active")
 		}
 	}
 

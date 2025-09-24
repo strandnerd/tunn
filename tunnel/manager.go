@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/strandnerd/tunn/config"
@@ -14,13 +15,15 @@ type Manager struct {
 	executor executor.SSHExecutor
 	display  *output.Display
 	checker  portChecker
+	notify   func(string, string, string)
 }
 
-func NewManager(exec executor.SSHExecutor, display *output.Display) *Manager {
+func NewManager(exec executor.SSHExecutor, display *output.Display, notifier func(string, string, string)) *Manager {
 	return &Manager{
 		executor: exec,
 		display:  display,
 		checker:  newSystemPortChecker(),
+		notify:   notifier,
 	}
 }
 
@@ -33,9 +36,6 @@ func (m *Manager) RunTunnels(ctx context.Context, tunnels map[string]config.Tunn
 		go func(n string, t config.Tunnel) {
 			defer wg.Done()
 			if err := m.runTunnel(ctx, n, t); err != nil {
-				if ctx.Err() == nil && m.display != nil {
-					m.display.PrintError(n, err.Error())
-				}
 				select {
 				case errCh <- err:
 				default:
@@ -62,6 +62,9 @@ func (m *Manager) runTunnel(ctx context.Context, name string, tunnel config.Tunn
 }
 
 func (m *Manager) ensurePortsAvailable(tunnelName string, tunnel config.Tunnel) error {
+	conflicts := make(map[string]string)
+	var conflictMessages []string
+
 	for _, mapping := range tunnel.Ports {
 		localPort, err := extractLocalPort(mapping)
 		if err != nil {
@@ -74,11 +77,30 @@ func (m *Manager) ensurePortsAvailable(tunnelName string, tunnel config.Tunnel) 
 		}
 		if process != nil {
 			message := fmt.Sprintf("port %s is being used by \"%s\" (pid: %d)", localPort, process.command, process.pid)
-			if m.display != nil {
-				m.display.UpdateStatus(tunnelName, mapping, fmt.Sprintf("error - %s", message))
-			}
-			return fmt.Errorf("%s", message)
+			conflicts[mapping] = message
+			conflictMessages = append(conflictMessages, message)
 		}
 	}
+
+	if len(conflicts) > 0 {
+		for _, mapping := range tunnel.Ports {
+			status := "stopped"
+			if msg, ok := conflicts[mapping]; ok {
+				status = fmt.Sprintf("error - %s", msg)
+			}
+			m.reportStatus(tunnelName, mapping, status)
+		}
+		return fmt.Errorf("%s", strings.Join(conflictMessages, "; "))
+	}
+
 	return nil
+}
+
+func (m *Manager) reportStatus(tunnelName, mapping, status string) {
+	if m.display != nil {
+		m.display.UpdateStatus(tunnelName, mapping, status)
+	}
+	if m.notify != nil {
+		m.notify(tunnelName, mapping, status)
+	}
 }

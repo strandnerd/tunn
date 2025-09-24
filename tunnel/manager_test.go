@@ -28,7 +28,7 @@ func (s *stubPortChecker) findListener(port string) (*processInfo, error) {
 func TestManagerRunTunnels(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
@@ -71,7 +71,7 @@ func TestManagerRunTunnels(t *testing.T) {
 func TestManagerRunSingleTunnel(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
@@ -89,15 +89,30 @@ func TestManagerRunSingleTunnel(t *testing.T) {
 		t.Errorf("Expected context deadline exceeded, got %v", err)
 	}
 
-	if len(mock.Commands) != 2 {
-		t.Errorf("Expected 2 commands (one per port), got %d", len(mock.Commands))
+	if len(mock.Commands) != 1 {
+		t.Fatalf("Expected 1 command for tunnel, got %d", len(mock.Commands))
+	}
+
+	cmd := mock.Commands[0]
+	found3000 := false
+	found4000 := false
+	for i := 0; i < len(cmd)-1; i++ {
+		if cmd[i] == "-L" && cmd[i+1] == "3000:localhost:3000" {
+			found3000 = true
+		}
+		if cmd[i] == "-L" && cmd[i+1] == "4000:localhost:4000" {
+			found4000 = true
+		}
+	}
+	if !found3000 || !found4000 {
+		t.Fatalf("expected aggregated command to include both port mappings, got %v", cmd)
 	}
 }
 
 func TestManagerCancellation(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{}
 
 	tunnels := map[string]config.Tunnel{
@@ -123,7 +138,7 @@ func TestManagerCancellation(t *testing.T) {
 func TestManagerRunTunnelPortInUse(t *testing.T) {
 	mock := &executor.MockSSHExecutor{}
 	display := output.NewDisplay()
-	manager := NewManager(mock, display)
+	manager := NewManager(mock, display, nil)
 	manager.checker = &stubPortChecker{
 		listeners: map[string]*processInfo{
 			"3000": {

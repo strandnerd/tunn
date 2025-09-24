@@ -39,6 +39,7 @@ type Display struct {
 	colorMap map[string]string
 	colorIdx int
 	printed  bool
+	footer   string
 }
 
 func NewDisplay() *Display {
@@ -137,6 +138,24 @@ func (d *Display) printStatuses() {
 		}
 		fmt.Println()
 	}
+
+	footer := strings.TrimSpace(d.footer)
+	if footer != "" {
+		fmt.Println(footer)
+	}
+}
+
+// SetFooter updates the message rendered beneath the tunnel table.
+func (d *Display) SetFooter(message string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	trimmed := strings.TrimSpace(message)
+	if d.footer == trimmed {
+		return
+	}
+	d.footer = trimmed
+	d.printStatuses()
 }
 
 func (d *Display) PrintError(tunnelName string, message string) {
