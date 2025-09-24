@@ -2,6 +2,8 @@
 
 `tunn` is a developer-friendly wrapper around OpenSSH that makes it easy to manage multiple SSH tunnels defined in a simple configuration file
 
+<img width="1536" height="649" alt="tunn-gophers" src="https://github.com/user-attachments/assets/9b88aa87-721b-4577-b0c1-2cf61af4d160" />
+
 ## Features
 
 - 🚀 **Simple Configuration**: Define all your tunnels in a single YAML file
@@ -13,6 +15,13 @@
 - 🧼 **Lean Go Module**: Depends only on `gopkg.in/yaml.v3`, keeping builds clean and portable
 - 🔧 **Native SSH Sessions**: Spawns the system `ssh` binary for each mapping, so keys and config behave exactly like your shell
 - 🎚️ **Per-Port Processes**: Launches one PID per port to pave the way for fine-grained lifecycle controls
+
+
+
+![Screencast from 2025-09-23 21-51-54 (online-video-cutter com)](https://github.com/user-attachments/assets/060db143-b885-4c17-9ef9-4075b80a9267)
+
+
+
 
 ## Installation
 
