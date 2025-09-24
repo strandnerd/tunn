@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -22,6 +23,8 @@ import (
 	"github.com/strandnerd/tunn/status"
 	"github.com/strandnerd/tunn/tunnel"
 )
+
+const daemonPreviewDuration = 2 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -154,7 +157,15 @@ func launchDaemon(paths daemon.Paths, tunnelNames []string) error {
 		fmt.Fprintf(os.Stderr, "warning: failed to release daemon process: %v\n", err)
 	}
 
+	encounteredErrors, previewErr := monitorDaemonStartup(paths, daemonPreviewDuration, isTerminal(os.Stdout))
+	if previewErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: unable to preview daemon startup: %v\n", previewErr)
+	}
+
 	fmt.Printf("tunn daemon started (pid %d)\n", childPID)
+	if encounteredErrors {
+		fmt.Println("Some tunnels reported errors during startup. Run 'tunn status' for details.")
+	}
 	return nil
 }
 
@@ -374,6 +385,165 @@ func runStopCommand(paths daemon.Paths) error {
 
 	fmt.Println("tunn daemon stopping — run 'tunn status' to verify if needed")
 	return nil
+}
+
+func monitorDaemonStartup(paths daemon.Paths, duration time.Duration, render bool) (bool, error) {
+	if duration <= 0 {
+		return false, nil
+	}
+
+	if render {
+		return renderDaemonPreview(paths, duration)
+	}
+
+	deadline := time.Now().Add(duration)
+	interval := 250 * time.Millisecond
+	for {
+		resp, err := queryDaemonStatus(paths)
+		if err != nil {
+			return false, err
+		}
+		if statusHasError(resp) {
+			return true, nil
+		}
+		if time.Now().After(deadline) {
+			return false, nil
+		}
+		time.Sleep(interval)
+	}
+}
+
+func renderDaemonPreview(paths daemon.Paths, duration time.Duration) (bool, error) {
+	display := output.NewDisplay()
+	cache := make(map[string]string)
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	defer fmt.Print("\033[H\033[2J")
+
+	autoCloseAt := time.Now().Add(duration)
+	encounteredError := false
+	var exitCh <-chan struct{}
+	var errorDeadline time.Time
+
+	for {
+		resp, err := queryDaemonStatus(paths)
+		if err != nil {
+			return encounteredError, err
+		}
+
+		hasErr := applySnapshotToDisplay(display, resp, cache)
+		if hasErr {
+			if !encounteredError {
+				encounteredError = true
+				display.SetFooter("Errors detected while starting tunnels. Press Enter to exit preview.")
+				if isTerminal(os.Stdin) {
+					exitCh = waitForEnterAsync()
+					errorDeadline = time.Time{}
+				} else {
+					errorDeadline = time.Now().Add(duration)
+				}
+			}
+		}
+
+		if encounteredError {
+			if exitCh != nil {
+				select {
+				case <-exitCh:
+					display.SetFooter("")
+					return true, nil
+				case <-ticker.C:
+					continue
+				}
+			}
+			if !errorDeadline.IsZero() && time.Now().After(errorDeadline) {
+				display.SetFooter("")
+				return true, nil
+			}
+			<-ticker.C
+			continue
+		}
+
+		if time.Now().After(autoCloseAt) {
+			display.SetFooter("")
+			return false, nil
+		}
+
+		<-ticker.C
+	}
+}
+
+func queryDaemonStatus(paths daemon.Paths) (*daemon.StatusResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	return daemon.QueryStatus(ctx, paths)
+}
+
+func applySnapshotToDisplay(display *output.Display, resp *daemon.StatusResponse, cache map[string]string) bool {
+	if resp == nil {
+		return false
+	}
+
+	tunnels := append([]status.Tunnel(nil), resp.Tunnels...)
+	sort.Slice(tunnels, func(i, j int) bool {
+		return tunnels[i].Name < tunnels[j].Name
+	})
+
+	hasError := false
+	for _, tun := range tunnels {
+		ports := make([]string, 0, len(tun.Ports))
+		for port := range tun.Ports {
+			ports = append(ports, port)
+		}
+		sort.Strings(ports)
+		for _, port := range ports {
+			state := tun.Ports[port]
+			key := tun.Name + "|" + port
+			if prev, ok := cache[key]; !ok || prev != state {
+				display.UpdateStatus(tun.Name, port, state)
+				cache[key] = state
+			}
+			if !hasError && strings.HasPrefix(strings.ToLower(state), "error") {
+				hasError = true
+			}
+		}
+	}
+
+	return hasError
+}
+
+func statusHasError(resp *daemon.StatusResponse) bool {
+	if resp == nil {
+		return false
+	}
+	for _, tun := range resp.Tunnels {
+		for _, state := range tun.Ports {
+			if strings.HasPrefix(strings.ToLower(state), "error") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func waitForEnterAsync() <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		_, _ = reader.ReadString('\n')
+		close(ch)
+	}()
+	return ch
+}
+
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 func tailLogMessage(path string) (string, error) {
