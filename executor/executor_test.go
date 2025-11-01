@@ -32,8 +32,20 @@ func TestMockSSHExecutor(t *testing.T) {
 	cmd := mock.Commands[0]
 	cmdStr := strings.Join(cmd, " ")
 
-	if !strings.Contains(cmdStr, "ssh -N") {
-		t.Error("Command should contain 'ssh -N'")
+	if !strings.Contains(cmdStr, "ssh") {
+		t.Error("Command should contain 'ssh'")
+	}
+
+	if !strings.Contains(cmdStr, "-N") {
+		t.Error("Command should contain '-N'")
+	}
+
+	if !strings.Contains(cmdStr, "-o ServerAliveInterval=60") {
+		t.Error("Command should contain '-o ServerAliveInterval=60'")
+	}
+
+	if !strings.Contains(cmdStr, "-o ExitOnForwardFailure=yes") {
+		t.Error("Command should contain '-o ExitOnForwardFailure=yes'")
 	}
 
 	if !strings.Contains(cmdStr, "-L 8080:localhost:8080") {

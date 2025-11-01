@@ -47,7 +47,11 @@ func (e *RealSSHExecutor) Execute(ctx context.Context, name string, tunnel confi
 
 func (e *RealSSHExecutor) executePortSSH(ctx context.Context, tunnelName string, tunnel config.Tunnel, portMapping string) error {
 	// Build SSH command for this specific port
-	args := []string{"-N"}
+	args := []string{
+		"-o", "ServerAliveInterval=60",
+		"-o", "ExitOnForwardFailure=yes",
+		"-N",
+	}
 
 	ports := expandPort(portMapping, ":")
 	local, remote := ports[0], ports[1]
@@ -151,7 +155,13 @@ type MockSSHExecutor struct {
 }
 
 func (m *MockSSHExecutor) Execute(ctx context.Context, name string, tunnel config.Tunnel) error {
-	args := []string{"ssh", "-N"}
+	args := []string{
+		"ssh",
+		"-o", "ServerAliveInterval=60",
+		"-o", "ExitOnForwardFailure=yes",
+		"-N",
+	}
+
 	for _, portMapping := range tunnel.Ports {
 		ports := expandPort(portMapping, ":")
 		local, remote := ports[0], ports[1]
